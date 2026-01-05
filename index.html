@@ -1,162 +1,23 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Alpha Scanner: Multi-Asset Quantitative Analysis</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap');
-        body { 
-            font-family: 'Inter', sans-serif; 
-            background-color: #0f172a;
-            color: #f8fafc;
-        }
-        .scanner-card { 
-            background: #1e293b; 
-            border: 1px solid #334155;
-            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.5); 
-        }
-        .signal-buy { background-color: #10b981; color: black; }
-        .signal-sell { background-color: #ef4444; color: black; }
-        .signal-neutral { background-color: #334155; color: #94a3b8; }
-        
-        .status-dot { height: 8px; width: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
-        .status-online { background-color: #10b981; box-shadow: 0 0 8px #10b981; }
-        .status-offline { background-color: #64748b; }
-        .status-connecting { background-color: #3b82f6; animation: pulse 1.5s infinite; }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-
-        .market-toggle-active { background-color: #0f172a; color: #f8fafc; border: 1px solid #f8fafc; }
-        table th { color: #94a3b8; }
-        table td { color: #f8fafc; }
-        .bg-slate-50 { background-color: #334155 !important; }
-        .bg-slate-100 { background-color: #1e293b !important; }
-        .bg-slate-800 { background-color: #0f172a !important; }
-        .hover\:bg-slate-50:hover { background-color: #475569 !important; }
-        input, button { background-color: #1e293b; color: #f8fafc; border: 1px solid #334155; }
-        input:focus { outline: none; border-color: #3b82f6; box-shadow: 0 0 0 1px #3b82f6; }
-    </style>
-</head>
-<body class="p-4 md:p-8">
-
-<div id="main-card" class="max-w-6xl mx-auto scanner-card rounded-lg overflow-hidden">
-    <header class="p-6 bg-[#0f172a] flex justify-between items-center">
-        <div>
-            <h1 class="text-2xl font-bold text-white tracking-tight">Alpha Quantitative Scanner</h1>
-            <p class="text-slate-400 text-xs mt-1 uppercase tracking-widest font-semibold">Real-Time Technical Signal Processing</p>
-        </div>
-        <div class="text-right">
-            <div class="flex items-center justify-end">
-                <span id="connection-dot" class="status-dot status-offline"></span>
-                <span id="connection-text" class="text-white text-[10px] font-bold uppercase tracking-wider">System Standby</span>
-            </div>
-            <div id="sim-indicator" class="hidden text-[10px] text-amber-400 font-bold mt-1 uppercase tracking-tighter">Synthetic Data Active</div>
-        </div>
-    </header>
-
-    <div class="p-6">
-        <div id="setup-panel" class="mb-8 space-y-6">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 border-b border-slate-600 pb-4">
-                <div class="flex bg-slate-700 p-1 rounded-md">
-                    <button id="btn-forex" onclick="setMarketMode('FOREX')" class="market-toggle-active px-4 py-1.5 text-xs font-bold rounded transition-all">FOREX</button>
-                    <button id="btn-crypto" onclick="setMarketMode('CRYPTO')" class="px-4 py-1.5 text-xs font-bold rounded transition-all text-slate-400">CRYPTO</button>
-                </div>
-                <div class="flex items-center gap-3">
-                    <span class="text-[10px] font-bold text-slate-400 uppercase">Acoustic Alerts</span>
-                    <input type="checkbox" id="audio-toggle" checked class="w-4 h-4 accent-slate-400">
-                </div>
-            </div>
-
-            <div class="grid grid-cols-1 gap-4">
-                <div id="crypto-input-container" class="hidden">
-                    <label class="block text-[10px] font-bold text-slate-400 mb-2 uppercase">Asset Sequence (Delimiter: ;)</label>
-                    <input type="text" id="asset-symbols" value="BTC/USD; ETH/USD; SOL/USD" class="w-full p-3 bg-slate-800 border border-slate-600 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-slate-500">
-                    <p class="text-[10px] text-slate-400 mt-2 italic">Validation Note: Use ";" to separate pairs. Ensure correct base/quote alignment.</p>
-                </div>
-
-                <div class="flex flex-col md:flex-row gap-3">
-                    <input type="password" id="api-key" placeholder="Enter API Key" class="flex-grow p-3 bg-slate-800 border border-slate-600 rounded text-sm font-mono focus:outline-none focus:ring-1 focus:ring-slate-500">
-                    <div class="flex gap-2">
-                        <button onclick="connectLive()" class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded text-xs font-bold uppercase tracking-wider transition">Connect WebSocket</button>
-                        <button onclick="toggleSimulation()" class="bg-slate-900 hover:bg-slate-700 text-white px-6 py-3 rounded text-xs font-bold uppercase tracking-wider transition">Run Simulation</button>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div id="analysis-table-container" class="hidden">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xs font-black uppercase tracking-widest text-slate-400">Current Signal Matrix</h3>
-                <button onclick="stopScan()" class="text-red-600 text-[10px] font-bold uppercase border border-red-600 px-3 py-1 rounded hover:bg-red-700">Terminate Session</button>
-            </div>
-            <div class="overflow-x-auto border border-slate-600 rounded-lg">
-                <table class="min-w-full divide-y divide-slate-600">
-                    <thead class="bg-slate-700">
-                        <tr>
-                            <th class="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Asset Pair</th>
-                            <th class="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Price (USD)</th>
-                            <th class="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider hidden sm:table-cell">Structural Bias</th>
-                            <th class="px-6 py-3 text-left text-[10px] font-bold text-slate-400 uppercase tracking-wider">Alpha Index</th>
-                            <th class="px-6 py-3 text-center text-[10px] font-bold text-slate-400 uppercase tracking-wider">Execution Signal</th>
-                        </tr>
-                    </thead>
-                    <tbody id="scanner-output" class="divide-y divide-slate-600"></tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-</div>
-
 <script>
-    let audioCtx = null;
-    document.body.addEventListener('click', () => {
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-    }, { once: true });
-
-    const FOREX_PAIRS = ["EUR/USD", "GBP/USD", "USD/JPY", "USD/CAD"];
-    const BASE_VALS = { "EUR/USD": 1.092, "GBP/USD": 1.264, "USD/JPY": 142.50, "BTC/USD": 96500, "ETH/USD": 2800, "SOL/USD": 190 };
-    let currentMarketMode = 'FOREX';
-    let activePairs = [...FOREX_PAIRS];
+    // --- CONFIGURATION ---
+    const OANDA_API_TOKEN = '<script>
+    // --- CONFIGURATION ---
+    const OANDA_API_TOKEN = '<script>
+    // --- CONFIGURATION ---
+    const OANDA_API_TOKEN = 'b8c35ee0f8186bd5e7101c0966a6290e-8af8c0f946b95a77f1801e51a739efaf'; // Replace with your token
+    const OANDA_ACCOUNT_ID = '001-001-19686413-001'; // Replace with your OANDA account ID
+    let activePairs = ["EUR/USD","GBP/USD","USD/JPY","USD/CAD"];
     let marketData = {};
-    let socket = null;
-    let simInterval = null;
-
-    function setMarketMode(mode) {
-        currentMarketMode = mode;
-        document.getElementById('btn-forex').classList.toggle('market-toggle-active', mode === 'FOREX');
-        document.getElementById('btn-crypto').classList.toggle('market-toggle-active', mode === 'CRYPTO');
-        document.getElementById('crypto-input-container').classList.toggle('hidden', mode === 'FOREX');
-        if (mode === 'FOREX') activePairs = [...FOREX_PAIRS];
-        else parseAssetInput();
-        initializeState();
-    }
-
-    function parseAssetInput() {
-        const raw = document.getElementById('asset-symbols').value;
-        activePairs = raw.split(';').map(s => s.trim().toUpperCase()).filter(s => s.length > 0);
-    }
-
-    function playTone(freqType) {
-        if (!document.getElementById('audio-toggle').checked || !audioCtx) return;
-        const osc = audioCtx.createOscillator();
-        const g = audioCtx.createGain();
-        osc.frequency.setValueAtTime(freqType === 'BUY' ? 880 : 440, audioCtx.currentTime);
-        g.gain.setValueAtTime(0.15, audioCtx.currentTime);
-        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.25);
-        osc.connect(g);
-        g.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.25);
-    }
+    let streamController = null;
 
     function initializeState() {
         marketData = {};
         activePairs.forEach(pair => {
             marketData[pair] = {
-                price: BASE_VALS[pair] || 100.0,
+                price: 0,
                 history: [],
-                emaFast: 0, emaSlow: 0,
+                emaFast: 0,
+                emaSlow: 0,
                 alphaScore: 0,
                 signal: 'NEUTRAL',
                 bias: 0,
@@ -166,112 +27,90 @@
         renderTable();
     }
 
-    function toggleSimulation() {
-        if (currentMarketMode === 'CRYPTO') parseAssetInput();
+    async function connectOandaStream() {
         initializeState();
         document.getElementById('setup-panel').classList.add('hidden');
         document.getElementById('analysis-table-container').classList.remove('hidden');
-        document.getElementById('sim-indicator').classList.remove('hidden');
-        updateStatus('online', 'Synthetic Analysis');
-        if (simInterval) clearInterval(simInterval);
-        simInterval = setInterval(() => {
-            activePairs.forEach(p => {
-                const volatility = currentMarketMode === 'CRYPTO' ? 0.0015 : 0.0002;
-                const change = (Math.random() - 0.5) * marketData[p].price * volatility;
-                updateMarket(p, marketData[p].price + change);
-            });
-        }, 1000);
-    }
-
-    function updateStatus(state, text) {
-        const dot = document.getElementById('connection-dot');
-        dot.className = `status-dot status-${state}`;
-        document.getElementById('connection-text').innerText = text;
-    }
-
-    function stopScan() {
-        if (simInterval) clearInterval(simInterval);
-        if (socket) socket.close();
-        document.getElementById('setup-panel').classList.remove('hidden');
-        document.getElementById('analysis-table-container').classList.add('hidden');
         document.getElementById('sim-indicator').classList.add('hidden');
-        updateStatus('offline', 'System Standby');
+        updateStatus('connecting', 'Connecting to OANDA');
+
+        const instruments = activePairs.map(p => p.replace('/','_')).join(',');
+        const url = `https://stream-fxpractice.oanda.com/v3/accounts/${OANDA_ACCOUNT_ID}/pricing/stream?instruments=${instruments}`;
+
+        try {
+            const response = await fetch(url, {
+                headers: {
+                    'Authorization': `Bearer ${OANDA_API_TOKEN}`
+                }
+            });
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+
+            updateStatus('online','Live Stream Active');
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                const lines = decoder.decode(value).split('\n');
+                lines.forEach(line => {
+                    if (!line) return;
+                    const data = JSON.parse(line);
+                    if (data.type === 'PRICE') {
+                        const pair = data.instrument.replace('_','/');
+                        const midPrice = (parseFloat(data.bids[0].price) + parseFloat(data.asks[0].price))/2;
+                        updateMarket(pair, midPrice);
+                    }
+                });
+            }
+        } catch(err) {
+            console.error('Stream error:', err);
+            updateStatus('offline','Disconnected');
+            // Attempt reconnect after 5 seconds
+            setTimeout(connectOandaStream, 5000);
+        }
     }
 
-    async function connectLive() {
-        if (currentMarketMode === 'CRYPTO') parseAssetInput();
-        const key = document.getElementById('api-key').value.trim();
-        if (!key) return;
-        updateStatus('connecting', 'Negotiating Socket');
-        socket = new WebSocket(`wss://ws.twelvedata.com/v1/quotes/price?apikey=${key}`);
-        socket.onopen = () => {
-            updateStatus('online', 'Stream Synchronized');
-            document.getElementById('setup-panel').classList.add('hidden');
-            document.getElementById('analysis-table-container').classList.remove('hidden');
-            socket.send(JSON.stringify({ action: "subscribe", params: { symbols: activePairs.join(',') } }));
-            setInterval(() => { socket.send(JSON.stringify({ action: "heartbeat" })); }, 10000);
-        };
-        socket.onmessage = (e) => {
-            let res;
-            try { res = JSON.parse(e.data); } catch { return; }
-            if (res.event === 'price') updateMarket(res.symbol, parseFloat(res.price));
-            else if (res.event === 'status') console.log('Status event:', res);
-        };
-        socket.onerror = (err) => console.error('WebSocket error:', err);
-    }
-
+    // --- UPDATE MARKET FUNCTION (from your current code) ---
     function updateMarket(pair, price) {
         const d = marketData[pair];
         if (!d) return;
         d.price = price;
         d.history.push(price);
         if (d.history.length > 50) d.history.shift();
+
         const aF = 0.22, aS = 0.09;
         d.emaFast = d.emaFast === 0 ? price : (price * aF) + (d.emaFast * (1 - aF));
         d.emaSlow = d.emaSlow === 0 ? price : (price * aS) + (d.emaSlow * (1 - aS));
+
         const delta = d.emaFast - d.emaSlow;
         d.bias = delta;
-        const sens = currentMarketMode === 'CRYPTO' ? 10 : 500;
+        const sens = 500;
         const score = 50 + (delta * sens);
         d.alphaScore = Math.max(0, Math.min(Math.floor(score), 100));
+
         const prevSignal = d.signal;
         if (d.alphaScore > 80) d.signal = 'BUY';
         else if (d.alphaScore < 20) d.signal = 'SELL';
         else d.signal = 'NEUTRAL';
-        if (d.signal !== 'NEUTRAL' && d.signal !== prevSignal) playTone(d.signal);
+
+        if (d.signal !== 'NEUTRAL' && d.signal !== prevSignal) {
+            playTone(d.signal);
+        }
         renderTable();
     }
 
-    function renderTable() {
-        const container = document.getElementById('scanner-output');
-        container.innerHTML = '';
-        activePairs.forEach(p => {
-            const d = marketData[p];
-            const row = document.createElement('tr');
-            row.className = "hover:bg-slate-600 transition-colors";
-            row.innerHTML = `
-                <td class="px-6 py-4 font-bold text-sm">${p}</td>
-                <td class="px-6 py-4 font-mono text-sm">${d.price.toFixed(p.includes('USD') && !p.includes('JPY') ? 4 : 2)}</td>
-                <td class="px-6 py-4 text-[10px] font-bold hidden sm:table-cell ${d.bias >= 0 ? 'text-emerald-400' : 'text-rose-400'}">
-                    ${d.bias >= 0 ? 'POSITIVE' : 'NEGATIVE'}
-                </td>
-                <td class="px-6 py-4">
-                    <div class="flex items-center gap-3">
-                        <span class="text-[10px] font-black w-6">${d.alphaScore}</span>
-                        <div class="flex-grow bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                            <div class="h-full bg-slate-400 transition-all duration-500" style="width: ${d.alphaScore}%"></div>
-                        </div>
-                    </div>
-                </td>
-                <td class="px-6 py-4 text-center">
-                    <span class="px-3 py-1 rounded text-[10px] font-black tracking-tighter transition-all ${'signal-' + d.signal.toLowerCase()}">
-                        ${d.signal}
-                    </span>
-                </td>
-            `;
-            container.appendChild(row);
-        });
+    // --- AUDIO ALERT FUNCTION ---
+    function playTone(freqType) {
+        if (!document.getElementById('audio-toggle').checked) return;
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.frequency.setValueAtTime(freqType === 'BUY' ? 880 : 440, audioCtx.currentTime);
+        g.gain.setValueAtTime(0.05, audioCtx.currentTime);
+        g.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.1);
+        osc.connect(g);
+        g.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.1);
     }
-</script>
-</body>
-</html>
